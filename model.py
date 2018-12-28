@@ -5,10 +5,14 @@ from config import global_config as cfg
 from reader import CamRest676Reader, get_glove_matrix
 from reader import KvretReader
 from tsd_net import TSD, cuda_, nan
+
+from torch import nn
 from torch.optim import Adam
 from torch.autograd import Variable
 from reader import pad_sequences
 import argparse, time
+import copy
+import pdb
 
 from metric import CamRestEvaluator, KvretEvaluator
 import logging
@@ -44,6 +48,20 @@ class Model:
         self.EV = evaluator_dict[dataset] # evaluator class
         if cfg.cuda: self.m = self.m.cuda()
         self.base_epoch = -1
+
+
+
+        self.pr_loss = nn.NLLLoss(ignore_index=0)
+        self.dec_loss = nn.NLLLoss(ignore_index=0)
+        # # parameters for maml
+
+        # self.train_lr = cfg.lr
+        # self.meta_lr = meta_lr
+        # self.nway = nway
+        # self.kshot = kshot
+        # self.kquery = kquery
+        # self.meta_batchsz = meta_batchsz
+        # self.K = K
 
     def _convert_batch(self, py_batch, prev_z_py=None):
         u_input_py = py_batch['user']
@@ -121,13 +139,42 @@ class Model:
                     m_len, degree_input, kw_ret \
                         = self._convert_batch(turn_batch, prev_z)
 
-                    loss, pr_loss, m_loss, turn_states = self.m(u_input=u_input, z_input=z_input,
-                                                                        m_input=m_input,
-                                                                        degree_input=degree_input,
-                                                                        u_input_np=u_input_np,
-                                                                        m_input_np=m_input_np,
-                                                                        turn_states=turn_states,
-                                                                        u_len=u_len, m_len=m_len, mode='train', **kw_ret)
+                    # loss, pr_loss, m_loss, turn_states = self.m(u_input=u_input, z_input=z_input,
+                    #                                                     m_input=m_input,
+                    #                                                     degree_input=degree_input,
+                    #                                                     u_input_np=u_input_np,
+                    #                                                     m_input_np=m_input_np,
+                    #                                                     turn_states=turn_states,
+                    #                                                     u_len=u_len, m_len=m_len, mode='train', **kw_ret)
+                    pz_proba, pm_dec_proba, turn_states = self.m(u_input=u_input,
+                                                                 z_input=z_input,
+                                                                 m_input=m_input,
+                                                                 degree_input=degree_input,
+                                                                 u_input_np=u_input_np,
+                                                                 m_input_np=m_input_np,
+                                                                 turn_states=turn_states,
+                                                                 u_len=u_len,
+                                                                 m_len=m_len,
+                                                                 mode='train',
+                                                                 **kw_ret)
+                    # loss, pr_loss, m_loss = self.supervised_loss(torch.log(pz_proba),
+                    #                                              torch.log(pm_dec_proba),
+                    #                                              z_input,
+                    #                                              m_input)
+                    # def supervised_loss(self, pz_proba, pm_dec_proba, z_input, m_input):
+                    pz_proba = torch.log(pz_proba)
+                    pm_dec_proba = torch.log(pm_dec_proba)
+                    pz_proba, pm_dec_proba = pz_proba[:, :, :cfg.vocab_size].contiguous(), pm_dec_proba[:, :,
+                                                                               :cfg.vocab_size].contiguous()
+                    pr_loss = self.pr_loss(pz_proba.view(-1, pz_proba.size(2)), z_input.view(-1))
+                    m_loss = self.dec_loss(pm_dec_proba.view(-1, pm_dec_proba.size(2)), m_input.view(-1))
+                    loss = pr_loss + m_loss
+                    # return loss, pr_loss, m_loss
+
+
+                    # ##################
+                    # pdb.set_trace()
+                    # ##################
                     loss.backward(retain_graph=turn_num != len(dial_batch) - 1)
                     grad = torch.nn.utils.clip_grad_norm(self.m.parameters(), 5.0)
                     optim.step()
@@ -197,12 +244,40 @@ class Model:
                 m_len, degree_input, kw_ret \
                     = self._convert_batch(turn_batch)
 
-                loss, pr_loss, m_loss, turn_states = self.m(u_input=u_input, z_input=z_input,
-                                                                    m_input=m_input,
-                                                                    turn_states=turn_states,
-                                                                    degree_input=degree_input,
-                                                                    u_input_np=u_input_np, m_input_np=m_input_np,
-                                                                    u_len=u_len, m_len=m_len, mode='train',**kw_ret)
+                # loss, pr_loss, m_loss, turn_states = self.m(u_input=u_input,
+                #                                             z_input=z_input,
+                #                                             m_input=m_input,
+                #                                             turn_states=turn_states,
+                #                                             degree_input=degree_input,
+                #                                             u_input_np=u_input_np,
+                #                                             m_input_np=m_input_np,
+                #                                             u_len=u_len,
+                #                                             m_len=m_len,
+                #                                             mode='train',
+                #                                             **kw_ret)
+
+
+                pz_proba, pm_dec_proba, turn_states = self.m(u_input=u_input,
+                                                             z_input=z_input,
+                                                             m_input=m_input,
+                                                             degree_input=degree_input,
+                                                             u_input_np=u_input_np,
+                                                             m_input_np=m_input_np,
+                                                             turn_states=turn_states,
+                                                             u_len=u_len,
+                                                             m_len=m_len,
+                                                             mode='train',
+                                                             **kw_ret)
+
+                pz_proba = torch.log(pz_proba)
+                pm_dec_proba = torch.log(pm_dec_proba)
+                pz_proba, pm_dec_proba = pz_proba[:, :, :cfg.vocab_size].contiguous(), pm_dec_proba[:, :,
+                                                                           :cfg.vocab_size].contiguous()
+                pr_loss = self.pr_loss(pz_proba.view(-1, pz_proba.size(2)), z_input.view(-1))
+                m_loss = self.dec_loss(pm_dec_proba.view(-1, pm_dec_proba.size(2)), m_input.view(-1))
+                loss = pr_loss + m_loss
+
+
                 sup_loss += loss.data[0]
                 sup_cnt += 1
                 logging.debug(
@@ -347,6 +422,9 @@ def main():
     np.random.seed(cfg.seed)
 
     m = Model(args.model.split('-')[-1])
+    # #########################
+    # pdb.set_trace()
+    # #########################
     m.count_params()
     if args.mode == 'train':
         m.load_glove_embedding()

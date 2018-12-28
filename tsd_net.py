@@ -1,6 +1,7 @@
 import torch
 
 from torch import nn
+from torch import optim
 import torch.nn.functional as F
 from torch.autograd import Variable
 
@@ -11,6 +12,8 @@ import copy, random, time, logging
 
 from torch.distributions import Categorical
 from reader import pad_sequences
+
+import pdb
 
 def cuda_(var):
     return var.cuda() if cfg.cuda else var
@@ -246,6 +249,48 @@ class ResponseDecoder(nn.Module):
         proba = torch.cat([proba, z_copy_score[:, cfg.vocab_size:]], 1)
         return proba, last_hidden, gru_out
 
+# class ResponseDecoderRL(nn.Module):
+#     def __init__(self, embed_size, hidden_size, vocab_size, emb, vocab):
+#         super(ResponseDecoderRL, self).__init__()
+
+#         self.vars = nn.ParameterList([
+#             # # embedding
+#             nn.Parameter(torch.empty(input_size, embed_size)),
+
+#             # # GRU
+#             nn.Parameter(torch.empty(input_size, 3 * hidden_size)),
+#             nn.Parameter(torch.empty(hidden_size, 3 * hidden_size)),
+
+#             # # attention
+
+#             # # linear projection
+#             nn.Paramter(torch.empty(hidden_size, hidden_size))
+
+
+#             ])
+#     def weight_init(self):
+#         pass
+
+#     def forward(self, x, vars):
+#         pass
+
+#         # # GRU
+#         x = x.view(-1, x.size(1))
+
+#         w_ih = F.linear(x, vars[1])
+#         w_hh = F.linear(x, last_hidden)
+
+#         w_ih = w_ih.squeeze()
+#         w_hh = w_hh.squeeze()
+
+#         i_r, i_z, i_n = w_ih.chunk(3, 1)
+#         h_r, h_z, h_n = w_hh.chunk(3, 1)
+
+#         r_gate = F.sigmoid(i_r + h_r)
+#         u_gate = F.sigmoid(i_z + h_z)
+#         memory = F.tanh(i_n + r_gate * h_n)
+
+#         last_hidden = u_gate * last_hidden + (1 - u_gate) * memory
 
 class TSD(nn.Module):
     def __init__(self, embed_size, hidden_size, vocab_size, degree_size, layer_num, dropout_rate, z_length,
@@ -283,9 +328,15 @@ class TSD(nn.Module):
                 self.forward_turn(u_input, u_len, m_input=m_input, m_len=m_len, z_input=z_input, mode='train',
                                   turn_states=turn_states, degree_input=degree_input, u_input_np=u_input_np,
                                   m_input_np=m_input_np, **kwargs)
-            loss, pr_loss, m_loss = self.supervised_loss(torch.log(pz_proba), torch.log(pm_dec_proba),
-                                                         z_input, m_input)
-            return loss, pr_loss, m_loss, turn_states
+
+            # ##################
+            # pdb.set_trace()
+            # ##################
+            # loss, pr_loss, m_loss = self.supervised_loss(torch.log(pz_proba), torch.log(pm_dec_proba),
+            #                                              z_input, m_input)
+            # return loss, pr_loss, m_loss, turn_states
+
+            return pz_proba, pm_dec_proba, turn_states
 
         elif mode == 'test':
             m_output_index, pz_index, turn_states = self.forward_turn(u_input, u_len=u_len, mode='test',
