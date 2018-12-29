@@ -56,12 +56,13 @@ class Model:
         # # parameters for maml
 
         # self.train_lr = cfg.lr
-        # self.meta_lr = meta_lr
+        self.meta_lr = 0.1 #meta_lr
         # self.nway = nway
         # self.kshot = kshot
         # self.kquery = kquery
         # self.meta_batchsz = meta_batchsz
         # self.K = K
+        self.meta_optim = optim.Adam(self.m.parameters(), lr = self.meta_lr)
 
     def _convert_batch(self, py_batch, prev_z_py=None):
         u_input_py = py_batch['user']
@@ -124,6 +125,127 @@ class Model:
         loss = pr_loss + m_loss
         return loss, pr_loss, m_loss
 
+    def train_maml(self):
+        lr = cfg.lr
+        prev_min_loss, early_stop_count = 1 << 30, cfg.early_stop_count
+        train_time = 0
+        for epoch in range(cfg.epoch_num):
+            sw = time.time()
+            if epoch <= self.base_epoch:
+                continue
+            self.training_adjust(epoch)
+            self.m.self_adjust(epoch)
+            sup_loss = 0
+            sup_cnt = 0
+            data_iterator = self.reader.mini_batch_iterator('train')
+            optim = Adam(lr=lr, params=filter(lambda x: x.requires_grad, self.m.parameters()),weight_decay=1e-5)
+
+            init_state = copy.deepcopy(self.m.state_dict())
+
+            for iter_num, dial_batch in enumerate(data_iterator):
+                turn_states = {}
+                prev_z = None
+                for turn_num, turn_batch in enumerate(dial_batch):
+                    if cfg.truncated:
+                        logging.debug('iter %d turn %d' % (iter_num, turn_num))
+                    optim.zero_grad()
+                    u_input, u_input_np, z_input, m_input, m_input_np, u_len, \
+                    m_len, degree_input, kw_ret \
+                        = self._convert_batch(turn_batch, prev_z)
+
+
+                    init_state = copy.deepcopy(self.m.state_dict())
+                    loss_tasks = []
+
+                    for k in range(self.K):
+                    # for k-th task:
+
+                        self.m.load_state_dict(init_state)
+                        optim.zero_grad()
+
+                        # # update parameters for each task
+                        pz_proba, pm_dec_proba, turn_states = self.m(u_input=u_input,
+                                                                     z_input=z_input,
+                                                                     m_input=m_input,
+                                                                     degree_input=degree_input,
+                                                                     u_input_np=u_input_np,
+                                                                     m_input_np=m_input_np,
+                                                                     turn_states=turn_states,
+                                                                     u_len=u_len,
+                                                                     m_len=m_len,
+                                                                     mode='train',
+                                                                     **kw_ret)
+
+
+                        loss, pr_loss, m_loss = self.supervised_loss(torch.log(pz_proba),
+                                                                     torch.log(pm_dec_proba),
+                                                                     z_input,
+                                                                     m_input)
+
+
+                        loss.backward(retain_graph=turn_num != len(dial_batch) - 1)
+                        grad = torch.nn.utils.clip_grad_norm(self.m.parameters(), 5.0)
+                        optim.step()
+
+                        # # resample
+                        # input should be different from above
+                        pz_proba, pm_dec_proba, turn_states = self.m(u_input=u_input,
+                                                                     z_input=z_input,
+                                                                     m_input=m_input,
+                                                                     degree_input=degree_input,
+                                                                     u_input_np=u_input_np,
+                                                                     m_input_np=m_input_np,
+                                                                     turn_states=turn_states,
+                                                                     u_len=u_len,
+                                                                     m_len=m_len,
+                                                                     mode='train',
+                                                                     **kw_ret) 
+                        # # loss for the meta-update                       
+                        loss, pr_loss, m_loss = self.supervised_loss(torch.log(pz_proba),
+                                                                     torch.log(pm_dec_proba),
+                                                                     z_input,
+                                                                     m_input)
+
+
+                        loss_tasks.append(loss)
+
+                    self.m.load_state_dict(init_state)
+                    self.meta_optim.zero_grad()
+                    loss_meta = torch.stack(loss_tasks).sum(0)
+                    loss_meta.backward()
+                    self.meta_optim.step()
+
+
+                    sup_loss += loss_meta.data.cpu().numpy()[0]
+                    sup_cnt += 1
+                    logging.debug(
+                        'loss:{} pr_loss:{} m_loss:{} grad:{}'.format(loss_meta.data[0],
+                                                                       pr_loss.data[0],
+                                                                       m_loss.data[0],
+                                                                       grad))
+
+                    prev_z = turn_batch['bspan']
+
+            epoch_sup_loss = sup_loss / (sup_cnt + 1e-8)
+            train_time += time.time() - sw
+            logging.info('Traning time: {}'.format(train_time))
+            logging.info('avg training loss in epoch %d sup:%f' % (epoch, epoch_sup_loss))
+
+            valid_sup_loss, valid_unsup_loss = self.validate()
+            logging.info('validation loss in epoch %d sup:%f unsup:%f' % (epoch, valid_sup_loss, valid_unsup_loss))
+            logging.info('time for epoch %d: %f' % (epoch, time.time()-sw))
+            valid_loss = valid_sup_loss + valid_unsup_loss
+
+            if valid_loss <= prev_min_loss:
+                self.save_model(epoch)
+                prev_min_loss = valid_loss
+            else:
+                early_stop_count -= 1
+                lr *= cfg.lr_decay
+                if not early_stop_count:
+                    break
+                logging.info('early stop countdown %d, learning rate %f' % (early_stop_count, lr))
+
     def train(self):
         lr = cfg.lr
         prev_min_loss, early_stop_count = 1 << 30, cfg.early_stop_count
@@ -176,9 +298,9 @@ class Model:
 
 
 
-                    # ##################
-                    # pdb.set_trace()
-                    # ##################
+                    ##################
+                    pdb.set_trace()
+                    ##################
                     loss.backward(retain_graph=turn_num != len(dial_batch) - 1)
                     grad = torch.nn.utils.clip_grad_norm(self.m.parameters(), 5.0)
                     optim.step()
