@@ -332,11 +332,11 @@ class TSD(nn.Module):
             # ##################
             # pdb.set_trace()
             # ##################
-            # loss, pr_loss, m_loss = self.supervised_loss(torch.log(pz_proba), torch.log(pm_dec_proba),
-            #                                              z_input, m_input)
-            # return loss, pr_loss, m_loss, turn_states
+            loss, pr_loss, m_loss = self.supervised_loss(torch.log(pz_proba), torch.log(pm_dec_proba),
+                                                         z_input, m_input)
+            return loss, pr_loss, m_loss, turn_states
 
-            return pz_proba, pm_dec_proba, turn_states
+            # return pz_proba, pm_dec_proba, turn_states
 
         elif mode == 'test':
             m_output_index, pz_index, turn_states = self.forward_turn(u_input, u_len=u_len, mode='test',
