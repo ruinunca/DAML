@@ -201,10 +201,11 @@ class Model:
 
                     self.m.load_state_dict(init_state)
                     self.meta_optim.zero_grad()
-                    loss_meta = torch.stack(loss_tasks).sum(0)
+                    loss_meta = torch.stack(loss_tasks).sum(0) / self.K
                     loss_meta.backward()
                     self.meta_optim.step()
 
+                    init_state = copy.deepcopy(self.m.state_dict())
 
                     sup_loss += loss_meta.data.cpu().numpy()[0]
                     sup_cnt += 1
@@ -425,13 +426,18 @@ class Model:
                     u_input, u_input_np, z_input, m_input, m_input_np, u_len, \
                     m_len, degree_input, kw_ret \
                         = self._convert_batch(turn_batch, prev_z)
-                    loss_rl = self.m(u_input=u_input, z_input=z_input,
-                                m_input=m_input,
-                                degree_input=degree_input,
-                                u_input_np=u_input_np,
-                                m_input_np=m_input_np,
-                                turn_states=turn_states,
-                                u_len=u_len, m_len=m_len, mode=mode, **kw_ret)
+                    loss_rl = self.m(u_input=u_input,
+                                     z_input=z_input,
+                                     m_input=m_input,
+                                     degree_input=degree_input,
+                                     u_input_np=u_input_np,
+                                     m_input_np=m_input_np,
+                                     turn_states=turn_states,
+                                     u_len=u_len,
+                                     m_len=m_len,
+                                     mode=mode,
+                                     **kw_ret)
+
 
                     if loss_rl is not None:
                         loss = loss_rl
@@ -441,6 +447,102 @@ class Model:
                         epoch_loss += loss.data.cpu().numpy()[0]
                         cnt += 1
                         logging.debug('{} loss {}, grad:{}'.format(mode,loss.data[0],grad))
+
+                    prev_z = turn_batch['bspan']
+
+            epoch_sup_loss = epoch_loss / (cnt + 1e-8)
+            logging.info('avg training loss in epoch %d sup:%f' % (epoch, epoch_sup_loss))
+
+            valid_sup_loss, valid_unsup_loss = self.validate()
+            logging.info('validation loss in epoch %d sup:%f unsup:%f' % (epoch, valid_sup_loss, valid_unsup_loss))
+            valid_loss = valid_sup_loss + valid_unsup_loss
+
+            self.save_model(epoch)
+
+            if valid_loss <= prev_min_loss:
+                #self.save_model(epoch)
+                prev_min_loss = valid_loss
+            else:
+                early_stop_count -= 1
+                lr *= cfg.lr_decay
+                if not early_stop_count:
+                    break
+                logging.info('early stop countdown %d, learning rate %f' % (early_stop_count, lr))
+
+    def reinforce_tune_maml(self):
+        lr = cfg.lr
+        prev_min_loss, early_stop_count = 1 << 30, cfg.early_stop_count
+        for epoch in range(self.base_epoch + cfg.rl_epoch_num + 1):
+            mode = 'rl'
+            if epoch <= self.base_epoch:
+                continue
+            epoch_loss, cnt = 0,0
+            data_iterator = self.reader.mini_batch_iterator('train')
+            optim = Adam(lr=lr, params=filter(lambda x: x.requires_grad, self.m.parameters()), weight_decay=1e-5)
+            for iter_num, dial_batch in enumerate(data_iterator):
+                turn_states = {}
+                prev_z = None
+                for turn_num, turn_batch in enumerate(dial_batch):
+                    optim.zero_grad()
+                    u_input, u_input_np, z_input, m_input, m_input_np, u_len, \
+                    m_len, degree_input, kw_ret \
+                        = self._convert_batch(turn_batch, prev_z)
+
+                    init_state = copy.deepcopy(self.m.state_dict())
+                    loss_tasks = []
+
+                    for k in range(self.K):
+
+                        self.m.load_state_dict(init_state)
+                        optim.zero_grad()
+
+                        loss_rl = self.m(u_input=u_input,
+                                         z_input=z_input,
+                                         m_input=m_input,
+                                         degree_input=degree_input,
+                                         u_input_np=u_input_np,
+                                         m_input_np=m_input_np,
+                                         turn_states=turn_states,
+                                         u_len=u_len,
+                                         m_len=m_len,
+                                         mode=mode,
+                                         **kw_ret)
+
+                        if loss_rl is not None:
+                            loss = loss_rl
+                            loss.backward()
+                            grad = torch.nn.utils.clip_grad_norm(self.m.parameters(), 2.0)
+                            optim.step()
+
+                        loss_rl = self.m(u_input=u_input,
+                                         z_input=z_input,
+                                         m_input=m_input,
+                                         degree_input=degree_input,
+                                         u_input_np=u_input_np,
+                                         m_input_np=m_input_np,
+                                         turn_states=turn_states,
+                                         u_len=u_len,
+                                         m_len=m_len,
+                                         mode=mode,
+                                         **kw_ret)
+
+                        if loss_rl is not None:
+                            loss_tasks.append(loss_rl)
+
+
+                    if len(loss_tasks) != 0:
+                        self.m.load_state_dict(init_state)
+                        self.meta_optim.zero_grad()
+                        loss_meta = torch.stack(loss_tasks).sum(0) / self.K
+                        loss_meta.backward()
+                        self.meta_optim.step()    
+                        
+                        init_state = copy.deepcopy(self.m.state_dict())
+
+                        epoch_loss += loss_meta.data.cpu().numpy()[0]
+                        cnt += 1
+                        logging.debug('{} loss {}, grad:{}'.format(mode,loss_meta.data[0],grad))
+
 
                     prev_z = turn_batch['bspan']
 
@@ -558,6 +660,9 @@ def main():
     elif args.mode == 'train_maml':
         m.load_glove_embedding()
         m.train_maml()
+    elif args.mode == 'rl_maml':
+        m.load_model()
+        m.reinforce_tune_maml()       
 
 
 if __name__ == '__main__':
