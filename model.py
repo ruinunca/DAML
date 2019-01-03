@@ -57,13 +57,14 @@ class Model:
         # # parameters for maml
 
         # self.train_lr = cfg.lr
-        self.meta_lr = 0.1 #meta_lr
+        self.meta_lr = cfg.lr #meta_lr
         # self.nway = nway
         # self.kshot = kshot
         # self.kquery = kquery
         # self.meta_batchsz = meta_batchsz
         self.K = 3
         self.meta_optim = optim.Adam(self.m.parameters(), lr = self.meta_lr)
+        self.meta_optim = Adam(lr = self.meta_lr, params=filter(lambda x: x.requires_grad, self.m.parameters()),weight_decay=1e-5)
 
     def _convert_batch(self, py_batch, prev_z_py=None):
         u_input_py = py_batch['user']
@@ -115,16 +116,6 @@ class Model:
 
         return u_input, u_input_np, z_input, m_input, m_input_np,u_len, m_len,  \
                degree_input, kw_ret
-
-    # def supervised_loss(self, pz_proba, pm_dec_proba, z_input, m_input):
-        # pz_proba = torch.log(pz_proba)
-        # pm_dec_proba = torch.log(pm_dec_proba)
-        pz_proba, pm_dec_proba = pz_proba[:, :, :cfg.vocab_size].contiguous(), pm_dec_proba[:, :,
-                                                                   :cfg.vocab_size].contiguous()
-        pr_loss = self.pr_loss(pz_proba.view(-1, pz_proba.size(2)), z_input.view(-1))
-        m_loss = self.dec_loss(pm_dec_proba.view(-1, pm_dec_proba.size(2)), m_input.view(-1))
-        loss = pr_loss + m_loss
-        return loss, pr_loss, m_loss
 
     def train_maml(self):
         lr = cfg.lr
@@ -201,8 +192,11 @@ class Model:
 
                     self.m.load_state_dict(init_state)
                     self.meta_optim.zero_grad()
+
                     loss_meta = torch.stack(loss_tasks).sum(0) / self.K
-                    loss_meta.backward()
+
+                    loss_meta.backward(retain_graph=turn_num != len(dial_batch) - 1)
+                    grad = torch.nn.utils.clip_grad_norm(self.m.parameters(), 5.0)
                     self.meta_optim.step()
 
                     init_state = copy.deepcopy(self.m.state_dict())
@@ -228,7 +222,7 @@ class Model:
             valid_loss = valid_sup_loss + valid_unsup_loss
 
             if valid_loss <= prev_min_loss:
-                self.save_model(epoch)
+                self.save_model(epoch, path = './models/camrest_maml.pkl')
                 prev_min_loss = valid_loss
             else:
                 early_stop_count -= 1
@@ -274,28 +268,7 @@ class Model:
                                                                 mode='train',
                                                                 **kw_ret)
 
-                    # pz_proba, pm_dec_proba, turn_states = self.m(u_input=u_input,
-                    #                                              z_input=z_input,
-                    #                                              m_input=m_input,
-                    #                                              degree_input=degree_input,
-                    #                                              u_input_np=u_input_np,
-                    #                                              m_input_np=m_input_np,
-                    #                                              turn_states=turn_states,
-                    #                                              u_len=u_len,
-                    #                                              m_len=m_len,
-                    #                                              mode='train',
-                    #                                              **kw_ret)
 
-                    # loss, pr_loss, m_loss = self.supervised_loss(torch.log(pz_proba),
-                    #                                              torch.log(pm_dec_proba),
-                    #                                              z_input,
-                    #                                              m_input)
-
-
-
-                    # ##################
-                    # pdb.set_trace()
-                    # ##################
                     loss.backward(retain_graph=turn_num != len(dial_batch) - 1)
                     grad = torch.nn.utils.clip_grad_norm(self.m.parameters(), 5.0)
                     optim.step()
@@ -376,24 +349,6 @@ class Model:
                                                             m_len=m_len,
                                                             mode='train',
                                                             **kw_ret)
-
-
-                # pz_proba, pm_dec_proba, turn_states = self.m(u_input=u_input,
-                #                                              z_input=z_input,
-                #                                              m_input=m_input,
-                #                                              degree_input=degree_input,
-                #                                              u_input_np=u_input_np,
-                #                                              m_input_np=m_input_np,
-                #                                              turn_states=turn_states,
-                #                                              u_len=u_len,
-                #                                              m_len=m_len,
-                #                                              mode='train',
-                #                                              **kw_ret)
-
-                # loss, pr_loss, m_loss = self.supervised_loss(torch.log(pz_proba),
-                #                                              torch.log(pm_dec_proba),
-                #                                              z_input,
-                #                                              m_input)
 
 
                 sup_loss += loss.data[0]
@@ -553,7 +508,7 @@ class Model:
             logging.info('validation loss in epoch %d sup:%f unsup:%f' % (epoch, valid_sup_loss, valid_unsup_loss))
             valid_loss = valid_sup_loss + valid_unsup_loss
 
-            self.save_model(epoch)
+            self.save_model(epoch, path = './models/camrest_maml.pkl')
 
             if valid_loss <= prev_min_loss:
                 #self.save_model(epoch)
@@ -641,9 +596,7 @@ def main():
     np.random.seed(cfg.seed)
 
     m = Model(args.model.split('-')[-1])
-    # #########################
-    # pdb.set_trace()
-    # #########################
+
     m.count_params()
     if args.mode == 'train':
         m.load_glove_embedding()
@@ -660,8 +613,11 @@ def main():
     elif args.mode == 'train_maml':
         m.load_glove_embedding()
         m.train_maml()
+    elif args.mode == 'test_maml':
+        m.load_model(path = './models/camrest_maml.pkl')
+        m.eval()
     elif args.mode == 'rl_maml':
-        m.load_model()
+        m.load_model(path = './models/camrest_maml.pkl')
         m.reinforce_tune_maml()       
 
 
