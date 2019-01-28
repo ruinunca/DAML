@@ -10,6 +10,7 @@ import os
 import re
 import csv
 import time, datetime
+import pdb
 
 
 def clean_replace(s, r, t, forward=True, backward=False):
@@ -154,7 +155,7 @@ class _ReaderBase:
         del_l = []
         for k in turn_bucket:
             if k >= 5: del_l.append(k)
-            logging.debug("bucket %d instance %d" % (k, len(turn_bucket[k])))
+            # logging.debug("bucket %d instance %d" % (k, len(turn_bucket[k])))
         # for k in del_l:
         #    turn_bucket.pop(k)
         return turn_bucket
@@ -200,6 +201,32 @@ class _ReaderBase:
             dial_batch.append(turn_l)
         return dial_batch
 
+    def _construct_mini_batch_turn(self, turns):
+        all_batches = []
+        batch = []
+        for turn in turns:
+            batch.append(turn)
+            if len(batch) == cfg.batch_size:
+                all_batches.append(batch)
+                batch = []
+        # if size of remainder < 1/2 batch_size, 
+        # just put them in the previous batch, 
+        # otherwise form a new batch
+        if len(batch) > 0.5 * cfg.batch_size:
+            all_batches.append(batch)
+        elif len(all_batches) != 0:
+            all_batches[-1].extend(batch)
+        return all_batches
+
+    def _transpose_batch_turn(self, batch):
+        turn_trans = {}
+        for turn in batch:
+            for key in turn.keys():
+                if key not in turn_trans:
+                    turn_trans[key] = []
+                turn_trans[key].append(turn[key])
+        return turn_trans
+
     def mini_batch_iterator(self, set_name):
         name_to_set = {'train': self.train, 'test': self.test, 'dev': self.dev}
         dial = name_to_set[set_name]
@@ -213,6 +240,75 @@ class _ReaderBase:
         random.shuffle(all_batches)
         for i, batch in enumerate(all_batches):
             yield self._transpose_batch(batch)
+
+    def mini_batch_iterator_maml(self, set_name):
+        name_to_set = {'train': self.train, 'test': self.test, 'dev': self.dev}
+        dial = name_to_set[set_name]
+        all_domain_batches = []
+        for domain in range(len(dial)):
+            turn_bucket = self._bucket_by_turn(dial[domain])
+            all_batches = []
+            for k in turn_bucket:
+                batches = self._construct_mini_batch(turn_bucket[k])
+                all_batches += batches
+            ##########################
+            pdb.set_trace()
+            ###########################
+            self._mark_batch_as_supervised(all_batches)
+            random.shuffle(all_batches)
+            all_domain_batches.append([self._transpose_batch(batch) for batch in all_batches])
+            # for i, batch in enumerate(all_batches):
+            #     yield self._transpose_batch(batch)
+        return all_domain_batches
+
+    def mini_batch_iterator_maml_supervised(self, set_name):
+
+        name_to_set = {'train': self.train, 'test': self.test, 'dev': self.dev}
+        total_dial_domain = name_to_set[set_name]
+
+        if set_name == 'train':
+            min_total_turns = min([sum([len(dialog) for dialog in all_dialog]) for all_dialog in total_dial_domain])
+
+            all_domain_batches = []
+            for domain in range(len(total_dial_domain)):
+                random.shuffle(total_dial_domain[domain])
+                turns = []
+                for dialog in total_dial_domain[domain]:
+                    if len(turns) < min_total_turns:
+                        turns += dialog
+                    else:
+                        break
+                turns = turns[:min_total_turns]
+
+                batches = self._construct_mini_batch_turn(turns)
+
+                all_domain_batches.append([self._transpose_batch_turn(batch) for batch in batches])
+
+            output = [[all_domain_batches[domain][turn] for domain in range(len(total_dial_domain))]
+                                                      for turn in range(len(all_domain_batches[0]))]
+            # ##########################
+            # pdb.set_trace()
+            # ###########################
+            for turn_num, turn_batch_domain in enumerate(output):
+                yield turn_batch_domain
+            # return output
+        else:
+            dials = []
+            for domain in range(len(total_dial_domain)):
+                dials += total_dial_domain[domain]
+
+            turn_bucket = self._bucket_by_turn(dials)
+            # self._shuffle_turn_bucket(turn_bucket)
+            all_batches = []
+            for k in turn_bucket:
+                batches = self._construct_mini_batch(turn_bucket[k])
+                all_batches += batches
+            self._mark_batch_as_supervised(all_batches)
+            random.shuffle(all_batches)
+            for i, batch in enumerate(all_batches):
+                yield self._transpose_batch(batch)
+
+
 
     def wrap_result(self, turn_batch, gen_m, gen_z, eos_syntax=None, prev_z=None):
         """
@@ -304,6 +400,7 @@ class _ReaderBase:
 class CamRest676Reader(_ReaderBase):
     def __init__(self):
         super().__init__()
+        self.db = []
         self._construct(cfg.data, cfg.db)
         self.result_file = ''
 
@@ -323,7 +420,7 @@ class CamRest676Reader(_ReaderBase):
                             constraint.extend(word_tokenize(s))
                     else:
                         requested.extend(word_tokenize(slot['slots'][0][1]))
-                degree = len(self.db_search(constraint))
+                degree = len(self.db_search(constraint, db_data))
                 requested = sorted(requested)
                 constraint.append('EOS_Z1')
                 requested.append('EOS_Z2')
@@ -361,7 +458,14 @@ class CamRest676Reader(_ReaderBase):
         return response
 
     def _value_key_map(self, db_data):
-        requestable_keys = ['address', 'name', 'phone', 'postcode', 'food', 'area', 'pricerange']
+        requestable_keys = [
+                            'address', 'name', 'phone', 'postcode', 'food', 'area', 'pricerange',
+                            'open', 'price', 'parking', 
+                            'duration', 'arrive_in',
+                            'temperature', 'weather_type',
+                            'rating', 'company', 'director'
+                            ]
+        # requestable_keys = ['open', 'price', 'parking']
         value_key = {}
         for db_entry in db_data:
             for k, v in db_entry.items():
@@ -412,39 +516,73 @@ class CamRest676Reader(_ReaderBase):
         train, dev, test = encoded_data[:dev_thr], encoded_data[dev_thr:test_thr], encoded_data[test_thr:]
         return train, dev, test
 
-    def _construct(self, data_json_path, db_json_path):
+    def _construct(self, data_json_path_list, db_json_path_list):
         """
         construct encoded train, dev, test set.
         :param data_json_path:
         :param db_json_path:
         :return:
         """
-        construct_vocab = False
-        if not os.path.isfile(cfg.vocab_path):
-            construct_vocab = True
-            print('Constructing vocab file...')
-        raw_data_json = open(data_json_path)
-        raw_data = json.loads(raw_data_json.read().lower())
-        db_json = open(db_json_path)
-        db_data = json.loads(db_json.read().lower())
-        self.db = db_data
-        tokenized_data = self._get_tokenized_data(raw_data, db_data, construct_vocab)
-        if construct_vocab:
-            self.vocab.construct(cfg.vocab_size)
-            self.vocab.save_vocab(cfg.vocab_path)
-        else:
-            self.vocab.load_vocab(cfg.vocab_path)
-        encoded_data = self._get_encoded_data(tokenized_data)
-        self.train, self.dev, self.test = self._split_data(encoded_data, cfg.split)
-        random.shuffle(self.train)
-        random.shuffle(self.dev)
-        random.shuffle(self.test)
-        raw_data_json.close()
-        db_json.close()
+        for i in range(len(data_json_path_list)):
+            construct_vocab = False
+            if not os.path.isfile(cfg.vocab_path):
+                construct_vocab = True
+                print('Constructing vocab file...')
+            raw_data_json = open(data_json_path_list[i])
+            raw_data = json.loads(raw_data_json.read().lower())
+            db_json = open(db_json_path_list[i])
+            db_data = json.loads(db_json.read().lower())
+            self.db.append(db_data)
+            tokenized_data = self._get_tokenized_data(raw_data, db_data, construct_vocab)
+            if construct_vocab:
+                self.vocab.construct(cfg.vocab_size)
+                self.vocab.save_vocab(cfg.vocab_path)
+            else:
+                self.vocab.load_vocab(cfg.vocab_path)
+            encoded_data = self._get_encoded_data(tokenized_data)
+            train_tmp, dev_tmp, test_tmp = self._split_data(encoded_data, cfg.split)
+            random.shuffle(train_tmp)
+            random.shuffle(dev_tmp)
+            random.shuffle(test_tmp)
+            self.train.append(train_tmp)
+            self.dev.append(dev_tmp)
+            self.test.append(test_tmp)
+            raw_data_json.close()
+            db_json.close()
 
-    def db_search(self, constraints):
+    # def _construct(self, data_json_path, db_json_path):
+    #     """
+    #     construct encoded train, dev, test set.
+    #     :param data_json_path:
+    #     :param db_json_path:
+    #     :return:
+    #     """
+    #     construct_vocab = False
+    #     if not os.path.isfile(cfg.vocab_path):
+    #         construct_vocab = True
+    #         print('Constructing vocab file...')
+    #     raw_data_json = open(data_json_path)
+    #     raw_data = json.loads(raw_data_json.read().lower())
+    #     db_json = open(db_json_path)
+    #     db_data = json.loads(db_json.read().lower())
+    #     self.db = db_data
+    #     tokenized_data = self._get_tokenized_data(raw_data, db_data, construct_vocab)
+    #     if construct_vocab:
+    #         self.vocab.construct(cfg.vocab_size)
+    #         self.vocab.save_vocab(cfg.vocab_path)
+    #     else:
+    #         self.vocab.load_vocab(cfg.vocab_path)
+    #     encoded_data = self._get_encoded_data(tokenized_data)
+    #     self.train, self.dev, self.test = self._split_data(encoded_data, cfg.split)
+    #     random.shuffle(self.train)
+    #     random.shuffle(self.dev)
+    #     random.shuffle(self.test)
+    #     raw_data_json.close()
+    #     db_json.close()
+
+    def db_search(self, constraints, db_data):
         match_results = []
-        for entry in self.db:
+        for entry in db_data:
             entry_values = ' '.join(entry.values())
             match = True
             for c in constraints:

@@ -9,6 +9,8 @@ import json
 import functools
 import pickle
 from reader import clean_replace
+from config import global_config as cfg
+import pdb
 
 en_sws = set(stopwords.words())
 wn = WordNetLemmatizer()
@@ -202,6 +204,7 @@ class CamRestEvaluator(GenericEvaluator):
         self.entity_dict = {}
 
     def run_metrics(self):
+        # # to go over all the OTGY files.
         raw_json = open('./data/CamRest676/CamRest676.json')
         raw_entities = open('./data/CamRest676/CamRestOTGY.json')
         raw_data = json.loads(raw_json.read().lower())
@@ -214,14 +217,54 @@ class CamRestEvaluator(GenericEvaluator):
         bleu_score = self.bleu_metric(data,'bleu')
         success_f1 = self.success_f1_metric(data, 'success')
         match = self.match_metric(data, 'match', raw_data=raw_data)
+        # #############################
+        # pdb.set_trace()
+        # #############################
         self._print_dict(self.metric_dict)
         return -success_f1[0]
 
-    def get_entities(self, entity_data):
-        for k in entity_data['informable']:
-            self.entities.extend(entity_data['informable'][k])
-            for item in entity_data['informable'][k]:
-                self.entity_dict[item] = k
+    def run_metrics_maml(self):
+        # # to go over all the OTGY files.
+
+        # # for the enitites
+        raw_entities_path = cfg.entity
+        raw_entities = []
+        for entity_path in raw_entities_path:
+            raw_entity = open(entity_path)
+            raw_entities.append(json.loads(raw_entity.read().lower()))
+            # #############################
+            # pdb.set_trace()
+            # #############################
+        self.get_entities(raw_entities)
+
+        # # for the data
+        raw_json_path = cfg.data
+        # raw_json = open('./data/CamRest676/CamRest676.json')
+        raw_json = open(cfg.data[1])
+        raw_data = json.loads(raw_json.read().lower())
+        data = self.read_result_data()
+        for i, row in enumerate(data):
+            data[i]['response'] = self.clean(data[i]['response'])
+            data[i]['generated_response'] = self.clean(data[i]['generated_response'])
+
+        bleu_score = self.bleu_metric(data,'bleu')
+        success_f1 = self.success_f1_metric(data, 'success')
+        match = self.match_metric(data, 'match', raw_data=raw_data)
+        # #############################
+        # pdb.set_trace()
+        # #############################
+        self._print_dict(self.metric_dict)
+        return -success_f1[0]
+
+    def get_entities(self, entities_data):
+        for entity_data in entities_data:
+            # #############################
+            # pdb.set_trace()
+            # #############################
+            for k in entity_data['informable']:
+                self.entities.extend(entity_data['informable'][k])
+                for item in entity_data['informable'][k]:
+                    self.entity_dict[item] = k
 
     def _extract_constraint(self, z):
         z = z.split()
@@ -240,7 +283,11 @@ class CamRestEvaluator(GenericEvaluator):
 
     def _extract_request(self, z):
         z = z.split()
-        return set(z).intersection(['address', 'postcode', 'phone', 'area', 'pricerange','food'])
+        return set(z).intersection(['address', 'postcode', 'phone', 'area', 'pricerange','food',
+                                    'open', 'price', 'parking', 
+                                    'duration', 'arrive_in',
+                                    'temperature', 'weather_type',
+                                    'rating', 'company', 'director'])
 
     @report
     def match_metric(self, data, sub='match',raw_data=None):
@@ -271,16 +318,21 @@ class CamRestEvaluator(GenericEvaluator):
                 for idx, w in enumerate(response_token):
                     if w.endswith('SLOT') and w != 'SLOT':
                         truth_response_req.append(w.split('_')[0])
+            # #############################
+            # pdb.set_trace()
+            # #############################
             if not gen_cons:
                 gen_bspan = dial[-1]['generated_bspan']
                 gen_cons = self._extract_constraint(gen_bspan)
             if truth_cons:
+                # #############################
+                # pdb.set_trace()
+                # #############################
                 if gen_cons == truth_cons:
                     match += 1
                 else:
                     print(gen_cons, truth_cons)
                 total += 1
-
         return match / total, success / total
 
     @report
