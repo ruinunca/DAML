@@ -51,7 +51,6 @@ class Model:
         self.base_epoch = -1
 
 
-
         self.pr_loss = nn.NLLLoss(ignore_index=0)
         self.dec_loss = nn.NLLLoss(ignore_index=0)
         # # parameters for maml
@@ -62,9 +61,8 @@ class Model:
         # self.kshot = kshot
         # self.kquery = kquery
         # self.meta_batchsz = meta_batchsz
-        self.K = 3
-        self.meta_optim = optim.Adam(self.m.parameters(), lr = self.meta_lr)
-        self.meta_optim = Adam(lr = self.meta_lr, params=filter(lambda x: x.requires_grad, self.m.parameters()),weight_decay=1e-5)
+        # self.meta_optim = optim.Adam(self.m.parameters(), lr = self.meta_lr)
+        # self.meta_optim = Adam(lr = self.meta_lr, params=filter(lambda x: x.requires_grad, self.m.parameters()),weight_decay=1e-5)
 
     def _convert_batch(self, py_batch, prev_z_py=None):
         u_input_py = py_batch['user']
@@ -122,6 +120,7 @@ class Model:
         prev_min_loss, early_stop_count = 1 << 30, cfg.early_stop_count
         train_time = 0
         for epoch in range(cfg.epoch_num):
+        # for epoch in range(1):
             sw = time.time()
             if epoch <= self.base_epoch:
                 continue
@@ -129,32 +128,34 @@ class Model:
             self.m.self_adjust(epoch)
             sup_loss = 0
             sup_cnt = 0
-            data_iterator = self.reader.mini_batch_iterator('train')
+
+            turn_batches_domain = self.reader.mini_batch_iterator_maml_supervised('train')
+
             optim = Adam(lr=lr, params=filter(lambda x: x.requires_grad, self.m.parameters()),weight_decay=1e-5)
+            meta_optim = Adam(lr = self.meta_lr, params=filter(lambda x: x.requires_grad, self.m.parameters()),weight_decay=1e-5)
 
             init_state = copy.deepcopy(self.m.state_dict())
 
-            for iter_num, dial_batch in enumerate(data_iterator):
+            # for iter_num, dial_batch in enumerate(data_iterator[min_idx]):
+            for turn_batch_domain in turn_batches_domain:
                 turn_states = {}
                 prev_z = None
-                for turn_num, turn_batch in enumerate(dial_batch):
-                    if cfg.truncated:
-                        logging.debug('iter %d turn %d' % (iter_num, turn_num))
+
+                loss_tasks = []
+                for k in range(len(cfg.data)):
+                # for k-th task:
+                    turn_batch = turn_batch_domain[k]
+
+                    self.m.load_state_dict(init_state)
                     optim.zero_grad()
+
                     u_input, u_input_np, z_input, m_input, m_input_np, u_len, \
                     m_len, degree_input, kw_ret \
                         = self._convert_batch(turn_batch, prev_z)
 
-
                     init_state = copy.deepcopy(self.m.state_dict())
-                    loss_tasks = []
 
-                    for k in range(self.K):
-                    # for k-th task:
-
-                        self.m.load_state_dict(init_state)
-                        optim.zero_grad()
-
+                    for tmp_grad in range(int(cfg.maml_step)):
                         # # update parameters for each task
                         loss, pr_loss, m_loss, turn_states = self.m(u_input=u_input,
                                                                     z_input=z_input,
@@ -168,77 +169,150 @@ class Model:
                                                                     mode='train',
                                                                     **kw_ret)
 
-                        loss.backward(retain_graph=turn_num != len(dial_batch) - 1)
+                        loss.backward()
+                        # loss.backward(retain_graph=turn_num != len(dial_batch) - 1)
                         grad = torch.nn.utils.clip_grad_norm(self.m.parameters(), 5.0)
                         optim.step()
 
-                        # # resample
-                        # input should be different from above
-                        # # loss for the meta-update   
-                        loss, pr_loss, m_loss, turn_states = self.m(u_input=u_input,
-                                                                    z_input=z_input,
-                                                                    m_input=m_input,
-                                                                    degree_input=degree_input,
-                                                                    u_input_np=u_input_np,
-                                                                    m_input_np=m_input_np,
-                                                                    turn_states=turn_states,
-                                                                    u_len=u_len,
-                                                                    m_len=m_len,
-                                                                    mode='train',
-                                                                    **kw_ret)
+                    # # resample
+                    # input should be different from above
+                    # # loss for the meta-update   
+                    loss, pr_loss, m_loss, turn_states = self.m(u_input=u_input,
+                                                                z_input=z_input,
+                                                                m_input=m_input,
+                                                                degree_input=degree_input,
+                                                                u_input_np=u_input_np,
+                                                                m_input_np=m_input_np,
+                                                                turn_states=turn_states,
+                                                                u_len=u_len,
+                                                                m_len=m_len,
+                                                                mode='train',
+                                                                **kw_ret)
 
 
-                        loss_tasks.append(loss)
-
-                    self.m.load_state_dict(init_state)
-                    self.meta_optim.zero_grad()
-
-                    loss_meta = torch.stack(loss_tasks).sum(0) / self.K
-
-                    loss_meta.backward(retain_graph=turn_num != len(dial_batch) - 1)
-                    grad = torch.nn.utils.clip_grad_norm(self.m.parameters(), 5.0)
-                    self.meta_optim.step()
-
-                    init_state = copy.deepcopy(self.m.state_dict())
-
-                    sup_loss += loss_meta.data.cpu().numpy()[0]
-                    sup_cnt += 1
-                    logging.debug(
-                        'loss:{} pr_loss:{} m_loss:{} grad:{}'.format(loss_meta.data[0],
-                                                                       pr_loss.data[0],
-                                                                       m_loss.data[0],
-                                                                       grad))
+                    loss_tasks.append(loss)
 
                     prev_z = turn_batch['bspan']
+
+                self.m.load_state_dict(init_state)
+                meta_optim.zero_grad()
+
+                loss_meta = torch.stack(loss_tasks).sum(0) / len(cfg.data)
+
+                loss_meta.backward()
+                # loss_meta.backward(retain_graph=turn_num != len(dial_batch) - 1)
+                grad = torch.nn.utils.clip_grad_norm(self.m.parameters(), 5.0)
+                meta_optim.step()
+
+                init_state = copy.deepcopy(self.m.state_dict())
+
+                sup_loss += loss_meta.data.cpu().numpy()[0]
+                sup_cnt += 1
+                # logging.debug(
+                #     'loss:{} pr_loss:{} m_loss:{} grad:{}'.format(loss_meta.data[0],
+                #                                                    pr_loss.data[0],
+                #                                                    m_loss.data[0],
+                #                                                    grad))
+
 
             epoch_sup_loss = sup_loss / (sup_cnt + 1e-8)
             train_time += time.time() - sw
             logging.info('Traning time: {}'.format(train_time))
             logging.info('avg training loss in epoch %d sup:%f' % (epoch, epoch_sup_loss))
 
-            valid_sup_loss, valid_unsup_loss = self.validate()
+            valid_sup_loss, valid_unsup_loss = self.validate_maml()
             logging.info('validation loss in epoch %d sup:%f unsup:%f' % (epoch, valid_sup_loss, valid_unsup_loss))
             logging.info('time for epoch %d: %f' % (epoch, time.time()-sw))
             valid_loss = valid_sup_loss + valid_unsup_loss
 
             if valid_loss <= prev_min_loss:
-                self.save_model(epoch, path = './models/camrest_maml.pkl')
+                # self.save_model(epoch, path = './models/camrest_maml.pkl')
+                self.save_model(epoch)
                 prev_min_loss = valid_loss
+                early_stop_count = cfg.early_stop_count
             else:
                 early_stop_count -= 1
                 lr *= cfg.lr_decay
+                self.meta_lr *= cfg.lr_decay
                 if not early_stop_count:
                     break
                 logging.info('early stop countdown %d, learning rate %f' % (early_stop_count, lr))
+
+    def validate_maml(self, data='dev'):
+        self.m.eval()
+        data_iterator = self.reader.mini_batch_iterator_maml_supervised(data)
+        sup_loss, unsup_loss = 0, 0
+        sup_cnt, unsup_cnt = 0, 0
+        for dial_batch in data_iterator:
+            turn_states = {}
+            for turn_num, turn_batch in enumerate(dial_batch):
+                u_input, u_input_np, z_input, m_input, m_input_np, u_len, \
+                m_len, degree_input, kw_ret \
+                    = self._convert_batch(turn_batch)
+
+                loss, pr_loss, m_loss, turn_states = self.m(u_input=u_input,
+                                                            z_input=z_input,
+                                                            m_input=m_input,
+                                                            turn_states=turn_states,
+                                                            degree_input=degree_input,
+                                                            u_input_np=u_input_np,
+                                                            m_input_np=m_input_np,
+                                                            u_len=u_len,
+                                                            m_len=m_len,
+                                                            mode='train',
+                                                            **kw_ret)
+
+
+                sup_loss += loss.data[0]
+                sup_cnt += 1
+                # logging.debug(
+                #     'loss:{} pr_loss:{} m_loss:{}'.format(loss.data[0], pr_loss.data[0], m_loss.data[0]))
+
+        sup_loss /= (sup_cnt + 1e-8)
+        unsup_loss /= (unsup_cnt + 1e-8)
+        self.m.train()
+        # print('result preview...')
+        # self.eval_maml()
+        return sup_loss, unsup_loss
+
+    def eval_maml(self, data='test'):
+        self.m.eval()
+        self.reader.result_file = None
+        data_iterator = self.reader.mini_batch_iterator_maml_supervised(data)
+        mode = 'test' if not cfg.pretrain else 'pretrain_test'
+        for batch_num, dial_batch in enumerate(data_iterator):
+            turn_states = {}
+            prev_z = None
+            for turn_num, turn_batch in enumerate(dial_batch):
+                u_input, u_input_np, z_input, m_input, m_input_np, u_len, \
+                m_len, degree_input, kw_ret \
+                    = self._convert_batch(turn_batch, prev_z)
+                m_idx, z_idx, turn_states = self.m(mode=mode, u_input=u_input, u_len=u_len, z_input=z_input,
+                                                   m_input=m_input,
+                                                   degree_input=degree_input, u_input_np=u_input_np,
+                                                   m_input_np=m_input_np,
+                                                   m_len=m_len, turn_states=turn_states,**kw_ret)
+                self.reader.wrap_result(turn_batch, m_idx, z_idx, prev_z=prev_z)
+                prev_z = z_idx
+        # #############################
+        # pdb.set_trace()
+        # #############################
+        ev = self.EV(result_path=cfg.result_path)
+        res = ev.run_metrics_maml()
+        self.m.train()
+        return res
 
     def train(self):
         lr = cfg.lr
         prev_min_loss, early_stop_count = 1 << 30, cfg.early_stop_count
         train_time = 0
+        # #############################
+        # pdb.set_trace()
+        # #############################
         for epoch in range(cfg.epoch_num):
             sw = time.time()
-            if epoch <= self.base_epoch:
-                continue
+            # if epoch <= self.base_epoch:
+            #     continue
             self.training_adjust(epoch)
             self.m.self_adjust(epoch)
             sup_loss = 0
@@ -268,17 +342,20 @@ class Model:
                                                                 mode='train',
                                                                 **kw_ret)
 
+                    # #############################
+                    # pdb.set_trace()
+                    # #############################
 
                     loss.backward(retain_graph=turn_num != len(dial_batch) - 1)
                     grad = torch.nn.utils.clip_grad_norm(self.m.parameters(), 5.0)
                     optim.step()
                     sup_loss += loss.data.cpu().numpy()[0]
                     sup_cnt += 1
-                    logging.debug(
-                        'loss:{} pr_loss:{} m_loss:{} grad:{}'.format(loss.data[0],
-                                                                       pr_loss.data[0],
-                                                                       m_loss.data[0],
-                                                                       grad))
+                    # logging.debug(
+                    #     'loss:{} pr_loss:{} m_loss:{} grad:{}'.format(loss.data[0],
+                    #                                                    pr_loss.data[0],
+                    #                                                    m_loss.data[0],
+                    #                                                    grad))
 
                     prev_z = turn_batch['bspan']
 
@@ -286,21 +363,26 @@ class Model:
             train_time += time.time() - sw
             logging.info('Traning time: {}'.format(train_time))
             logging.info('avg training loss in epoch %d sup:%f' % (epoch, epoch_sup_loss))
-
+            # print('Traning time: {}'.format(train_time))
+            print('avg training loss in epoch %d sup:%f' % (epoch, epoch_sup_loss))
             valid_sup_loss, valid_unsup_loss = self.validate()
             logging.info('validation loss in epoch %d sup:%f unsup:%f' % (epoch, valid_sup_loss, valid_unsup_loss))
             logging.info('time for epoch %d: %f' % (epoch, time.time()-sw))
+            print('validation loss in epoch %d sup:%f unsup:%f' % (epoch, valid_sup_loss, valid_unsup_loss))
+            # print('time for epoch %d: %f' % (epoch, time.time()-sw))
             valid_loss = valid_sup_loss + valid_unsup_loss
 
             if valid_loss <= prev_min_loss:
                 self.save_model(epoch)
                 prev_min_loss = valid_loss
+                early_stop_count = cfg.early_stop_count
             else:
                 early_stop_count -= 1
                 lr *= cfg.lr_decay
                 if not early_stop_count:
                     break
                 logging.info('early stop countdown %d, learning rate %f' % (early_stop_count, lr))
+                print('early stop countdown %d, learning rate %f' % (early_stop_count, lr))
 
     def eval(self, data='test'):
         self.m.eval()
@@ -353,14 +435,14 @@ class Model:
 
                 sup_loss += loss.data[0]
                 sup_cnt += 1
-                logging.debug(
-                    'loss:{} pr_loss:{} m_loss:{}'.format(loss.data[0], pr_loss.data[0], m_loss.data[0]))
+                # logging.debug(
+                #     'loss:{} pr_loss:{} m_loss:{}'.format(loss.data[0], pr_loss.data[0], m_loss.data[0]))
 
         sup_loss /= (sup_cnt + 1e-8)
         unsup_loss /= (unsup_cnt + 1e-8)
         self.m.train()
         print('result preview...')
-        self.eval()
+        # self.eval()
         return sup_loss, unsup_loss
 
     def reinforce_tune(self):
@@ -446,7 +528,7 @@ class Model:
                     init_state = copy.deepcopy(self.m.state_dict())
                     loss_tasks = []
 
-                    for k in range(self.K):
+                    for k in range(len(cfg.data)):
 
                         self.m.load_state_dict(init_state)
                         optim.zero_grad()
@@ -488,7 +570,7 @@ class Model:
                     if len(loss_tasks) != 0:
                         self.m.load_state_dict(init_state)
                         self.meta_optim.zero_grad()
-                        loss_meta = torch.stack(loss_tasks).sum(0) / self.K
+                        loss_meta = torch.stack(loss_tasks).sum(0) / len(cfg.data)
                         loss_meta.backward()
                         self.meta_optim.step()    
                         
@@ -508,7 +590,8 @@ class Model:
             logging.info('validation loss in epoch %d sup:%f unsup:%f' % (epoch, valid_sup_loss, valid_unsup_loss))
             valid_loss = valid_sup_loss + valid_unsup_loss
 
-            self.save_model(epoch, path = './models/camrest_maml.pkl')
+            # self.save_model(epoch, path = './models/camrest_maml.pkl')
+            self.save_model(epoch)
 
             if valid_loss <= prev_min_loss:
                 #self.save_model(epoch)
@@ -575,16 +658,51 @@ def main():
     if args.cfg:
         for pair in args.cfg:
             k, v = tuple(pair.split('='))
-            dtype = type(getattr(cfg, k))
+            dtype = type(getattr(cfg, k))            
+            # #############################
+            # # print(k)
+            # # print(v)
+            # pdb.set_trace()
+            # #############################
+
             if dtype == type(None):
                 raise ValueError()
             if dtype is bool:
                 v = False if v == 'False' else True
             else:
                 v = dtype(v)
+                # v = v.replace('\t','').replace('\n','').split(',')
+
+            #     cfg.split = tuple([int(i) for i in cfg.split])
+            #     cfg.mode = args.mode
+            #     if type(v) is list and len(v[0]) == 1:
+            #         v = "".join(v)
+            #     v = v.replace('\t','').replace('\n','').split(',')
+
+
+            # #############################
+            # print(k)
+            # print(v)
+            # pdb.set_trace()
+            # #############################
+
             setattr(cfg, k, v)
 
+    # cfg.mode = args.mode
+
+    if args.cfg:
+        cfg.split = tuple([int(i) for i in cfg.split])
+        cfg.mode = args.mode
+        if type(cfg.data) is list and 'maml' not in cfg.mode:
+            cfg.data = "".join(cfg.data)
+        if type(cfg.db) is list and 'maml' not in cfg.mode:
+            cfg.db = "".join(cfg.db)
+        if type(cfg.entity) is list and 'maml' not in cfg.mode:
+            cfg.entity = "".join(cfg.entity)    
     logging.debug(str(cfg))
+    if 'train' not in args.mode:
+        print(str(cfg))
+
     if cfg.cuda:
         torch.cuda.set_device(cfg.cuda_device)
         logging.debug('Device: {}'.format(torch.cuda.current_device()))
@@ -613,11 +731,14 @@ def main():
     elif args.mode == 'train_maml':
         m.load_glove_embedding()
         m.train_maml()
+    elif args.mode == 'adjust_maml':
+        m.load_model()
+        m.adjust_maml()
     elif args.mode == 'test_maml':
-        m.load_model(path = './models/camrest_maml.pkl')
-        m.eval()
+        m.load_model()
+        m.eval_maml()
     elif args.mode == 'rl_maml':
-        m.load_model(path = './models/camrest_maml.pkl')
+        m.load_model()
         m.reinforce_tune_maml()       
 
 

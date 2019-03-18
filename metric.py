@@ -10,6 +10,7 @@ import functools
 import pickle
 from reader import clean_replace
 from config import global_config as cfg
+import logging
 import pdb
 
 en_sws = set(stopwords.words())
@@ -205,8 +206,24 @@ class CamRestEvaluator(GenericEvaluator):
 
     def run_metrics(self):
         # # to go over all the OTGY files.
-        raw_json = open('./data/CamRest676/CamRest676.json')
-        raw_entities = open('./data/CamRest676/CamRestOTGY.json')
+        # raw_json = open('./data/CamRest676/CamRest676.json')
+        # raw_entities = open('./data/CamRest676/CamRestOTGY.json')
+        # idx = 1
+
+        raw_json = open(cfg.data)
+        raw_entities = open(cfg.entity)
+        # raw_json = open('../SimDial/1500_data_fixed_'+str(idx)+'/restaurant-MixSpec-1500.json')
+        # raw_entities = open('../SimDial/1500_data_fixed_'+str(idx)+'/restaurant-MixSpec-1500-OTGY.json')
+
+        # # raw_json = open('../SimDial/1500_data_fixed_'+str(idx)+'/movie-MixSpec-1500.json')
+        # # raw_entities = open('../SimDial/1500_data_fixed_'+str(idx)+'/movie-MixSpec-1500-OTGY.json')
+        
+        # raw_json = open('../SimDial/1500_data_fixed_'+str(idx)+'/rest_pitt-MixSpec-1500.json')
+        # raw_entities = open('../SimDial/1500_data_fixed_'+str(idx)+'/rest_pitt-MixSpec-1500-OTGY.json')
+        
+        # raw_json = open('../SimDial/1500_data_fixed_'+str(idx)+'/restaurant_style-MixSpec-1500.json')
+        # raw_entities = open('../SimDial/1500_data_fixed_'+str(idx)+'/restaurant_style-MixSpec-1500-OTGY.json')
+        
         raw_data = json.loads(raw_json.read().lower())
         raw_entities = json.loads(raw_entities.read().lower())
         self.get_entities(raw_entities)
@@ -223,25 +240,65 @@ class CamRestEvaluator(GenericEvaluator):
         self._print_dict(self.metric_dict)
         return -success_f1[0]
 
+    def get_entities(self, entity_data):
+        for k in entity_data['informable']:
+            self.entities.extend(entity_data['informable'][k])
+            for item in entity_data['informable'][k]:
+                self.entity_dict[item] = k
+
     def run_metrics_maml(self):
         # # to go over all the OTGY files.
 
-        # # for the enitites
-        raw_entities_path = cfg.entity
-        raw_entities = []
-        for entity_path in raw_entities_path:
-            raw_entity = open(entity_path)
-            raw_entities.append(json.loads(raw_entity.read().lower()))
-            # #############################
-            # pdb.set_trace()
-            # #############################
+        # # # for the enitites
+        # raw_entities_path_list = cfg.entity
+        # raw_entities = []
+        # for entity_path in raw_entities_path_list:
+        #     raw_entity = open(entity_path)
+        #     raw_entities.append(json.loads(raw_entity.read().lower()))
+        #     # #############################
+        #     # pdb.set_trace()
+        #     # #############################
+        # self.get_entities_maml(raw_entities)
+
+        raw_json = open(cfg.data)
+        raw_entities = open(cfg.entity)
+
+        # raw_json = open('./data/CamRest676/CamRest676.json')
+        # raw_entities = open('./data/CamRest676/CamRestOTGY.json')
+
+        # raw_json = open('../SimDial/1500_data_fixed/r_w_b.json')
+        # raw_entities = open('../SimDial/1500_data_fixed/r_w_b-OTGY.json')
+
+        # raw_json = open('../SimDial/1500_data_fixed/rest_weat_bus_littlemovie.json')
+        # raw_entities = open('../SimDial/1500_data_fixed/rest_weat_bus_littlemovie-OTGY.json')
+
+        # raw_json = open('../SimDial/1500_data_fixed/restaurant-MixSpec-1500.json')
+        # raw_entities = open('../SimDial/1500_data_fixed/restaurant-MixSpec-1500-OTGY.json')
+
+        # raw_json = open('../SimDial/1500_data_fixed/movie-MixSpec-1500.json')
+        # raw_entities = open('../SimDial/1500_data_fixed/movie-MixSpec-1500-OTGY.json')
+
+        # raw_json = open('../SimDial/1500_data_fixed/movie-MixSpec-150x10.json')
+        # raw_entities = open('../SimDial/1500_data_fixed/movie-MixSpec-150-OTGY.json')
+        
+        # raw_json = open('../SimDial/1500_data_fixed/rest_pitt-MixSpec-1500.json')
+        # raw_entities = open('../SimDial/1500_data_fixed/rest_pitt-MixSpec-1500-OTGY.json')
+        
+        # raw_json = open('../SimDial/1500_data_fixed/restaurant_style-MixSpec-1500.json')
+        # raw_entities = open('../SimDial/1500_data_fixed/restaurant_style-MixSpec-1500-OTGY.json')
+
+        raw_data = json.loads(raw_json.read().lower())
+        raw_entities = json.loads(raw_entities.read().lower())
         self.get_entities(raw_entities)
 
-        # # for the data
-        raw_json_path = cfg.data
-        # raw_json = open('./data/CamRest676/CamRest676.json')
-        raw_json = open(cfg.data[1])
-        raw_data = json.loads(raw_json.read().lower())
+        # # # for the data
+        # raw_json_path_list = cfg.data
+        # raw_data = []
+        # # raw_json = open('./data/CamRest676/CamRest676.json')
+        # for raw_json_path in raw_json_path_list:
+        #     raw_json = open(raw_json_path)
+        #     raw_data += json.loads(raw_json.read().lower())
+
         data = self.read_result_data()
         for i, row in enumerate(data):
             data[i]['response'] = self.clean(data[i]['response'])
@@ -256,7 +313,7 @@ class CamRestEvaluator(GenericEvaluator):
         self._print_dict(self.metric_dict)
         return -success_f1[0]
 
-    def get_entities(self, entities_data):
+    def get_entities_maml(self, entities_data):
         for entity_data in entities_data:
             # #############################
             # pdb.set_trace()
@@ -276,10 +333,17 @@ class CamRestEvaluator(GenericEvaluator):
         if 'moderately' in s:
             s.discard('moderately')
             s.add('moderate')
-        #print(self.entities) 
-        #return s
         return s.intersection(self.entities)
-        #return set(z).difference(['name', 'address', 'postcode', 'phone', 'area', 'pricerange'])
+
+        ###############moderate###############
+        # if 'EOS_Z1' in z:
+        #     idx = z.index('EOS_Z1')
+        #     z = z[:idx]
+        # s = set()
+        # for i in self.entities:
+        #     if i in z:
+        #         s.add(i)
+        # return s
 
     def _extract_request(self, z):
         z = z.split()
@@ -293,7 +357,11 @@ class CamRestEvaluator(GenericEvaluator):
     def match_metric(self, data, sub='match',raw_data=None):
         dials = self.pack_dial(data)
         match,total = 0,1e-8
+
+        tp, fn, fp = 0.0, 0.0, 0.0
+
         success = 0
+        count1 = 0
         # find out the last placeholder and see whether that is correct
         # if no such placeholder, see the final turn, because it can be a yes/no question or scheduling dialogue
         for dial_id in dials:
@@ -303,6 +371,11 @@ class CamRestEvaluator(GenericEvaluator):
             truth_turn_num = -1
             truth_response_req = []
             for turn_num,turn in enumerate(dial):
+
+                # #############################
+                # if 'unk' in turn['user']:
+                #     pdb.set_trace()
+                # #############################
                 if 'SLOT' in turn['generated_response']:
                     gen_bspan = turn['generated_bspan']
                     gen_cons = self._extract_constraint(gen_bspan)
@@ -318,22 +391,55 @@ class CamRestEvaluator(GenericEvaluator):
                 for idx, w in enumerate(response_token):
                     if w.endswith('SLOT') and w != 'SLOT':
                         truth_response_req.append(w.split('_')[0])
-            # #############################
-            # pdb.set_trace()
-            # #############################
+                # #############################
+                # pdb.set_trace()
+                # #############################
             if not gen_cons:
                 gen_bspan = dial[-1]['generated_bspan']
                 gen_cons = self._extract_constraint(gen_bspan)
+            # #############################
+            # if 'unk' in turn['generated_bspan']:
+            #     pdb.set_trace()
+            # #############################                
             if truth_cons:
                 # #############################
                 # pdb.set_trace()
                 # #############################
+                tp_tmp = len([t for t in gen_cons if t in truth_cons])
+                fp_tmp = max(0, len(gen_cons) - tp_tmp)
+                fn_tmp = max(0, len(truth_cons) - tp_tmp)
+                tp += tp_tmp
+                fp += fp_tmp
+                fn += fn_tmp
                 if gen_cons == truth_cons:
+                    #############################
+                    # if 'unk' in turn['user'] + turn['response'] + turn['generated_response'] + turn['generated_bspan']:
+                    # pdb.set_trace()
+                    #############################
                     match += 1
                 else:
                     print(gen_cons, truth_cons)
+
+                    # #############################
+                    # pdb.set_trace()
+                    # #############################
+
                 total += 1
-        return match / total, success / total
+            else:
+
+                # #############################
+                # pdb.set_trace()
+                # #############################
+                count1 += 1
+
+        precision, recall = tp / (tp + fp + 1e-8), tp / (tp + fn + 1e-8)
+        entity_f1 = 2 * precision * recall / (precision + recall + 1e-8)
+        print(total, count1)
+        # print("tp: %f , fn: %f, fp: %f" %(tp,fn,fp))
+        print("precision: %f; recall: %f" %(precision, recall))
+        print("entity f1:", entity_f1)
+
+        return match / total, entity_f1
 
     @report
     def success_f1_metric(self, data, sub='successf1'):

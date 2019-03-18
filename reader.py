@@ -96,6 +96,27 @@ class _ReaderBase:
             self._freq_dict = dic['freq_dict']
             f.close()
 
+        def enlarge_vocab(self, vocab_path):
+            # self.construct(vocab_size)
+
+            f = open(vocab_path, 'rb')
+            dic = pickle.load(f)
+            # self._idx2item = dic['idx2item']
+            # self._item2idx = dic['item2idx']
+            # self._freq_dict = dic['freq_dict']
+
+            # #######################
+            # pdb.set_trace()
+            # #######################
+            self._idx2item.update(dic['idx2item'])
+            self._item2idx.update(dic['item2idx'])
+            self._freq_dict.update(dic['freq_dict'])
+            f.close()            
+            # #######################
+            # pdb.set_trace()
+            # #######################
+
+
         def save_vocab(self, vocab_path):
             f = open(vocab_path, 'wb')
             dic = {
@@ -251,9 +272,9 @@ class _ReaderBase:
             for k in turn_bucket:
                 batches = self._construct_mini_batch(turn_bucket[k])
                 all_batches += batches
-            ##########################
-            pdb.set_trace()
-            ###########################
+            # ##########################
+            # pdb.set_trace()
+            # ###########################
             self._mark_batch_as_supervised(all_batches)
             random.shuffle(all_batches)
             all_domain_batches.append([self._transpose_batch(batch) for batch in all_batches])
@@ -401,7 +422,11 @@ class CamRest676Reader(_ReaderBase):
     def __init__(self):
         super().__init__()
         self.db = []
-        self._construct(cfg.data, cfg.db)
+
+        if type(cfg.data) is list:
+            self._construct_maml(cfg.data, cfg.db)
+        else:
+            self._construct(cfg.data, cfg.db)
         self.result_file = ''
 
     def _get_tokenized_data(self, raw_data, db_data, construct_vocab):
@@ -426,6 +451,10 @@ class CamRest676Reader(_ReaderBase):
                 requested.append('EOS_Z2')
                 user = word_tokenize(turn['usr']['transcript']) + ['EOS_U']
                 response = word_tokenize(self._replace_entity(turn['sys']['sent'], vk_map, constraint)) + ['EOS_M']
+                
+                # ################################
+                # pdb.set_trace()
+                # ##################################
                 tokenized_dial.append({
                     'dial_id': dial_id,
                     'turn_num': turn_num,
@@ -445,7 +474,15 @@ class CamRest676Reader(_ReaderBase):
         response = re.sub('[cC][., ]*[bB][., ]*\d[., ]*\d[., ]*\w[., ]*\w', 'postcode_SLOT', response)
         response = re.sub('\d{5}\s?\d{6}', 'phone_SLOT', response)
         constraint_str = ' '.join(constraint)
+
+        # ################################
+        # pdb.set_trace()
+        # ##################################
         for v, k in sorted(vk_map.items(), key=lambda x: -len(x[0])):
+
+            # ################################
+            # pdb.set_trace()
+            # ##################################
             start_idx = response.find(v)
             if start_idx == -1 \
                     or (start_idx != 0 and response[start_idx - 1] != ' ') \
@@ -455,6 +492,9 @@ class CamRest676Reader(_ReaderBase):
                 response = clean_replace(response, v, k + '_SLOT', forward=True, backward=False)
             else:
                 response = clean_replace(response, v, k + '_SLOT', forward=False, backward=False)
+            # ################################
+            # pdb.set_trace()
+            # ##################################
         return response
 
     def _value_key_map(self, db_data):
@@ -487,6 +527,9 @@ class CamRest676Reader(_ReaderBase):
                 turn_num = turn['turn_num']
                 dial_id = turn['dial_id']
 
+                # ################################
+                # pdb.set_trace()
+                # ##################################
                 # final input
                 encoded_dial.append({
                     'dial_id': dial_id,
@@ -516,7 +559,7 @@ class CamRest676Reader(_ReaderBase):
         train, dev, test = encoded_data[:dev_thr], encoded_data[dev_thr:test_thr], encoded_data[test_thr:]
         return train, dev, test
 
-    def _construct(self, data_json_path_list, db_json_path_list):
+    def _construct_maml(self, data_json_path_list, db_json_path_list):
         """
         construct encoded train, dev, test set.
         :param data_json_path:
@@ -525,7 +568,7 @@ class CamRest676Reader(_ReaderBase):
         """
         for i in range(len(data_json_path_list)):
             construct_vocab = False
-            if not os.path.isfile(cfg.vocab_path):
+            if not os.path.isfile(cfg.vocab_path) or cfg.enlarge_vocab:
                 construct_vocab = True
                 print('Constructing vocab file...')
             raw_data_json = open(data_json_path_list[i])
@@ -537,6 +580,9 @@ class CamRest676Reader(_ReaderBase):
             if construct_vocab:
                 self.vocab.construct(cfg.vocab_size)
                 self.vocab.save_vocab(cfg.vocab_path)
+            elif cfg.enlarge_vocab:
+                self.vocab.construct(cfg.vocab_size)
+                self.vocab.enlarge_vocab(cfg.vocab_path)
             else:
                 self.vocab.load_vocab(cfg.vocab_path)
             encoded_data = self._get_encoded_data(tokenized_data)
@@ -550,35 +596,36 @@ class CamRest676Reader(_ReaderBase):
             raw_data_json.close()
             db_json.close()
 
-    # def _construct(self, data_json_path, db_json_path):
-    #     """
-    #     construct encoded train, dev, test set.
-    #     :param data_json_path:
-    #     :param db_json_path:
-    #     :return:
-    #     """
-    #     construct_vocab = False
-    #     if not os.path.isfile(cfg.vocab_path):
-    #         construct_vocab = True
-    #         print('Constructing vocab file...')
-    #     raw_data_json = open(data_json_path)
-    #     raw_data = json.loads(raw_data_json.read().lower())
-    #     db_json = open(db_json_path)
-    #     db_data = json.loads(db_json.read().lower())
-    #     self.db = db_data
-    #     tokenized_data = self._get_tokenized_data(raw_data, db_data, construct_vocab)
-    #     if construct_vocab:
-    #         self.vocab.construct(cfg.vocab_size)
-    #         self.vocab.save_vocab(cfg.vocab_path)
-    #     else:
-    #         self.vocab.load_vocab(cfg.vocab_path)
-    #     encoded_data = self._get_encoded_data(tokenized_data)
-    #     self.train, self.dev, self.test = self._split_data(encoded_data, cfg.split)
-    #     random.shuffle(self.train)
-    #     random.shuffle(self.dev)
-    #     random.shuffle(self.test)
-    #     raw_data_json.close()
-    #     db_json.close()
+    def _construct(self, data_json_path, db_json_path):
+        """
+        construct encoded train, dev, test set.
+        :param data_json_path:
+        :param db_json_path:
+        :return:
+        """
+        construct_vocab = False
+        if not os.path.isfile(cfg.vocab_path):
+            construct_vocab = True
+            print('Constructing vocab file...')
+        raw_data_json = open(data_json_path)
+        raw_data = json.loads(raw_data_json.read().lower())
+        db_json = open(db_json_path)
+        db_data = json.loads(db_json.read().lower())
+        self.db = db_data
+        tokenized_data = self._get_tokenized_data(raw_data, db_data, construct_vocab)
+        if construct_vocab:
+            self.vocab.construct(cfg.vocab_size)
+            self.vocab.save_vocab(cfg.vocab_path)
+        else:
+            self.vocab.load_vocab(cfg.vocab_path)
+        encoded_data = self._get_encoded_data(tokenized_data)
+        random.shuffle(encoded_data)
+        self.train, self.dev, self.test = self._split_data(encoded_data, cfg.split)
+        random.shuffle(self.train)
+        random.shuffle(self.dev)
+        random.shuffle(self.test)
+        raw_data_json.close()
+        db_json.close()
 
     def db_search(self, constraints, db_data):
         match_results = []
