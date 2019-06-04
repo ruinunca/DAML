@@ -374,6 +374,7 @@ class TSD(nn.Module):
 
         if prev_z_input is not None:
             pv_z_enc_out, _, pv_z_emb = self.u_encoder(prev_z_input, prev_z_len)
+            
         u_enc_out, u_enc_hidden, u_emb = self.u_encoder(u_input, u_len)
         last_hidden = u_enc_hidden[:-1]
         z_tm1 = cuda_(Variable(torch.ones(1, batch_size).long() * 3))  # GO_2 token

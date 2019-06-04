@@ -417,8 +417,8 @@ class CamRestEvaluator(GenericEvaluator):
                     # pdb.set_trace()
                     #############################
                     match += 1
-                else:
-                    print(gen_cons, truth_cons)
+                # else:
+                #     print(gen_cons, truth_cons)
 
                     # #############################
                     # pdb.set_trace()

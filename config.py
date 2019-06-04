@@ -5,7 +5,7 @@ import configparser
 class _Config:
     def __init__(self):
         self._init_logging_handler()
-        self.cuda_device = 1
+        self.cuda_device = 0
         self.eos_m_token = 'EOS_M'       
         self.beam_len_bonus = 0.5
 
@@ -22,9 +22,9 @@ class _Config:
         }
         init_method[m]()
 
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
-# # # # # # # # # # # # this is for test different parameters # # # # # # # # # # # # # # # # #
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+# # # # # # # # # # # this is for test different parameters # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
     def _camrest_tsdf_init(self):
         self.beam_len_bonus = 0.5
         self.prev_z_method = 'separate'
@@ -35,7 +35,7 @@ class _Config:
         self.hidden_size = 50
         self.lr = 0.003
         self.dropout_rate = 0.3
-        self.maml_step=2
+        self.maml_step=7
 
         self.split = (9, 1, 5)
         self.lr_decay = 0.5
@@ -424,9 +424,9 @@ class _Config:
     #     # self.db = '../SimDial/1500_data_fixed/restaurant_style-MixSpec-150-DB.json'
     #     # self.entity = '../SimDial/1500_data_fixed/restaurant_style-MixSpec-150-OTGY.json'
 
-    #     # self.model_path = './models/fixed_r_w_b3.pkl'
-    #     # self.result_path = './results/fixed_r_w_b3.csv'
-    #     # self.result_path = './results/fixed_r_w_b3-r.csv'
+    #     self.model_path = './models/fixed0_r_w_b3.pkl'
+    #     self.result_path = './results/fixed0_r_w_b3.csv'
+    # #     # self.result_path = './results/fixed_r_w_b3-r.csv'
     #     # self.result_path = './results/fixed_r_w_b3-m.csv'
     #     # self.result_path = './results/fixed_r_w_b3-r_slot.csv'
     #     # self.result_path = './results/fixed_r_w_b3-r_style.csv'
@@ -779,21 +779,10 @@ class _Config:
 
     #     self.enlarge_vocab = False
 
-    #     # self.vocab_path = './vocab/vocab-camrest.pkl'
-    #     # self.data = './data/CamRest676/CamRest676.json'
-    #     # self.entity = './data/CamRest676/CamRestOTGY.json'
-    #     # self.db = './data/CamRest676/CamRestDB.json'
-
-    #     self.vocab_path = '../sequicity_orig/vocab/vocab-rest_weat_bus.pkl'
-    #     # # restaurant
-    #     # self.data = '../SimDial/1500_data/restaurant-MixSpec-1500.json'
-    #     # self.db = '../SimDial/1500_data/restaurant-MixSpec-1500-DB.json'
-    #     # self.entity = '../SimDial/1500_data/restaurant-MixSpec-1500-OTGY.json'
-
-    #     # restaurant Pitt
-    #     self.data = '../SimDial/1500_data/rest_pitt-MixSpec-1500.json'
-    #     self.db = '../SimDial/1500_data/rest_pitt-MixSpec-1500-DB.json'
-    #     self.entity = '../SimDial/1500_data/rest_pitt-MixSpec-1500-OTGY.json'
+    #     self.vocab_path = './vocab/vocab-camrest.pkl'
+    #     self.data = './data/CamRest676/CamRest676.json'
+    #     self.entity = './data/CamRest676/CamRestOTGY.json'
+    #     self.db = './data/CamRest676/CamRestDB.json'
 
     #     self.glove_path = './data/glove/glove.6B.50d.txt'
     #     self.batch_size = 32
@@ -808,14 +797,8 @@ class _Config:
     #     self.max_ts = 40
     #     self.early_stop_count = 3
     #     self.new_vocab = True
-    #     # self.model_path = './models/camrest.pkl'
-    #     # self.result_path = './results/camrest-rl.csv'
-
-    #     self.model_path = './models/rest_weat_bus.pkl'
-    #     # self.result_path = './results/rest_weat_bus.csv'
-    #     # self.result_path = './results/rest_weat_bus-movie.csv'
-    #     # self.result_path = './results/rest_weat_bus-rest_nomaml.csv'
-    #     self.result_path = './results/rest_weat_bus-rest_slot_nomaml.csv'
+    #     self.model_path = './models/camrest.pkl'
+    #     self.result_path = './results/camrest-rl.csv'
 
     #     self.teacher_force = 100
     #     self.beam_search = False

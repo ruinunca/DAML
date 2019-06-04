@@ -382,6 +382,10 @@ class _ReaderBase:
         if write_header:
             self.result_file.write('START_CSV_SECTION\n')
             writer.writeheader()
+
+        ################################
+        pdb.set_trace()
+        ##################################
         writer.writerows(results)
         return results
 
@@ -619,7 +623,7 @@ class CamRest676Reader(_ReaderBase):
         else:
             self.vocab.load_vocab(cfg.vocab_path)
         encoded_data = self._get_encoded_data(tokenized_data)
-        random.shuffle(encoded_data)
+        # random.shuffle(encoded_data)
         self.train, self.dev, self.test = self._split_data(encoded_data, cfg.split)
         random.shuffle(self.train)
         random.shuffle(self.dev)

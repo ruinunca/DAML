@@ -396,6 +396,9 @@ class Model:
                 u_input, u_input_np, z_input, m_input, m_input_np, u_len, \
                 m_len, degree_input, kw_ret \
                     = self._convert_batch(turn_batch, prev_z)
+                ################################
+                pdb.set_trace()
+                ##################################
                 m_idx, z_idx, turn_states = self.m(mode=mode, u_input=u_input, u_len=u_len, z_input=z_input,
                                                    m_input=m_input,
                                                    degree_input=degree_input, u_input_np=u_input_np,
