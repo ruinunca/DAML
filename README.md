@@ -1,14 +1,14 @@
-# Sequicity
+# DAML
 
-Source code for the ACL 2018 paper entitled "Sequicity: Simplifying Task-oriented Dialogue Systems with Single Sequence-to-Sequence 
-Architectures" by Wenqiang Lei et al.
+Source code for the ACL 2019 paper entitled "Domain Adaptive Dialog Generation via Meta Learning" by Kun Qian and Zhou Yu https://arxiv.org/abs/1906.03520
+
 
 ```
-@inproceedings{lei2018sequicity,
-  title={Sequicity: Simplifying Task-oriented Dialogue Systems with Single Sequence-to-Sequence Architectures},
-  author={Lei, Wenqiang and Jin, Xisen and Ren, Zhaochun and He, Xiangnan and Kan, Min-Yen and Yin, Dawei},
-  year={2018},
-  organization={ACL}
+@article{qian2019domain,
+  title={Domain Adaptive Dialog Generation via Meta Learning},
+  author={Qian, Kun and Yu, Zhou},
+  journal={arXiv preprint arXiv:1906.03520},
+  year={2019}
 }
 ```
 
