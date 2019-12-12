@@ -11,31 +11,32 @@ Source code for the ACL 2019 paper entitled "Domain Adaptive Dialog Generation v
   year={2019}
 }
 ```
-
+## Simulated Data Generation
+Please download the code here: https://github.com/qbetterk/SimDial
+```
+git clone https://github.com/qbetterk/SimDial.git
+cd SimDial
+python multiple_domains.py
+```
 
 ## Training with default parameters
 
 ```
-python model.py -mode train -model [tsdf-camrest|tsdf-kvret]
+python model.py -mode train_maml -model tsdf-camrest
 ```
 
 (optional: configuring hyperparameters with cmdline)
 
 ```
-python model.py -mode train -model [tsdf-camrest|tsdf-kvret] -cfg lr=0.003 batch_size=32
+python model.py -mode train_maml -model tsdf-camrest -cfg lr=0.003 batch_size=32
 ```
 
 ## Testing
 
 ```
-python model.py -mode test -model [tsdf-camrest|tsdf-kvret]
+python model.py -mode test_maml -model [tsdf-camrest|tsdf-kvret]
 ```
 
-## Reinforcement fine-tuning
-
-```
-python model.py -mode rl -model [tsdf-camrest|tsdf-kvret] -cfg lr=0.0001
-```
 
 ## Before running
 1. Install required python packages. We used pytorch 0.3.0 and python 3.6 under Linux operating system. 
