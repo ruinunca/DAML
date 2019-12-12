@@ -208,12 +208,6 @@ class Model:
 
                 sup_loss += loss_meta.data.cpu().numpy()[0]
                 sup_cnt += 1
-                # logging.debug(
-                #     'loss:{} pr_loss:{} m_loss:{} grad:{}'.format(loss_meta.data[0],
-                #                                                    pr_loss.data[0],
-                #                                                    m_loss.data[0],
-                #                                                    grad))
-
 
             epoch_sup_loss = sup_loss / (sup_cnt + 1e-8)
             train_time += time.time() - sw
@@ -265,14 +259,10 @@ class Model:
 
                 sup_loss += loss.data[0]
                 sup_cnt += 1
-                # logging.debug(
-                #     'loss:{} pr_loss:{} m_loss:{}'.format(loss.data[0], pr_loss.data[0], m_loss.data[0]))
-
+                
         sup_loss /= (sup_cnt + 1e-8)
         unsup_loss /= (unsup_cnt + 1e-8)
         self.m.train()
-        # print('result preview...')
-        # self.eval_maml()
         return sup_loss, unsup_loss
 
     def eval_maml(self, data='test'):
@@ -294,9 +284,6 @@ class Model:
                                                    m_len=m_len, turn_states=turn_states,**kw_ret)
                 self.reader.wrap_result(turn_batch, m_idx, z_idx, prev_z=prev_z)
                 prev_z = z_idx
-        # #############################
-        # pdb.set_trace()
-        # #############################
         ev = self.EV(result_path=cfg.result_path)
         res = ev.run_metrics_maml()
         self.m.train()
@@ -306,9 +293,6 @@ class Model:
         lr = cfg.lr
         prev_min_loss, early_stop_count = 1 << 30, cfg.early_stop_count
         train_time = 0
-        # #############################
-        # pdb.set_trace()
-        # #############################
         for epoch in range(cfg.epoch_num):
             sw = time.time()
             # if epoch <= self.base_epoch:
@@ -342,21 +326,12 @@ class Model:
                                                                 mode='train',
                                                                 **kw_ret)
 
-                    # #############################
-                    # pdb.set_trace()
-                    # #############################
 
                     loss.backward(retain_graph=turn_num != len(dial_batch) - 1)
                     grad = torch.nn.utils.clip_grad_norm(self.m.parameters(), 5.0)
                     optim.step()
                     sup_loss += loss.data.cpu().numpy()[0]
                     sup_cnt += 1
-                    # logging.debug(
-                    #     'loss:{} pr_loss:{} m_loss:{} grad:{}'.format(loss.data[0],
-                    #                                                    pr_loss.data[0],
-                    #                                                    m_loss.data[0],
-                    #                                                    grad))
-
                     prev_z = turn_batch['bspan']
 
             epoch_sup_loss = sup_loss / (sup_cnt + 1e-8)
@@ -396,9 +371,6 @@ class Model:
                 u_input, u_input_np, z_input, m_input, m_input_np, u_len, \
                 m_len, degree_input, kw_ret \
                     = self._convert_batch(turn_batch, prev_z)
-                ################################
-                pdb.set_trace()
-                ##################################
                 m_idx, z_idx, turn_states = self.m(mode=mode, u_input=u_input, u_len=u_len, z_input=z_input,
                                                    m_input=m_input,
                                                    degree_input=degree_input, u_input_np=u_input_np,
@@ -662,11 +634,6 @@ def main():
         for pair in args.cfg:
             k, v = tuple(pair.split('='))
             dtype = type(getattr(cfg, k))            
-            # #############################
-            # # print(k)
-            # # print(v)
-            # pdb.set_trace()
-            # #############################
 
             if dtype == type(None):
                 raise ValueError()
@@ -674,24 +641,9 @@ def main():
                 v = False if v == 'False' else True
             else:
                 v = dtype(v)
-                # v = v.replace('\t','').replace('\n','').split(',')
-
-            #     cfg.split = tuple([int(i) for i in cfg.split])
-            #     cfg.mode = args.mode
-            #     if type(v) is list and len(v[0]) == 1:
-            #         v = "".join(v)
-            #     v = v.replace('\t','').replace('\n','').split(',')
-
-
-            # #############################
-            # print(k)
-            # print(v)
-            # pdb.set_trace()
-            # #############################
 
             setattr(cfg, k, v)
 
-    # cfg.mode = args.mode
 
     if args.cfg:
         cfg.split = tuple([int(i) for i in cfg.split])
