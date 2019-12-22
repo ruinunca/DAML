@@ -34,7 +34,7 @@ python model.py -mode train_maml -model tsdf-camrest -cfg lr=0.003 batch_size=32
 ## Testing
 
 ```
-python model.py -mode test_maml -model [tsdf-camrest|tsdf-kvret]
+python model.py -mode test_maml -model tsdf-camrest
 ```
 
 
