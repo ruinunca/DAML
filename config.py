@@ -1,4 +1,4 @@
-import logging
+import logging, os
 import time
 import configparser
 
@@ -35,7 +35,7 @@ class _Config:
         self.hidden_size = 50
         self.lr = 0.003
         self.dropout_rate = 0.3
-        self.maml_step=7
+        self.maml_step=1
 
         self.split = (9, 1, 5)
         self.lr_decay = 0.5
@@ -54,7 +54,7 @@ class _Config:
         self.enlarge_vocab = False
 
         idx = 9
-        size= 150
+        self.size= 15
         self.data = [
                      # # # # bus
                      '../SimDial/1500_data_fixed_'+str(idx)+'/bus-MixSpec-1500.json',
@@ -88,10 +88,11 @@ class _Config:
                          # '../SimDial/1500_data_fixed_'+str(idx)+'/movie-MixSpec-1500-OTGY.json'
                         ]
 
-        self.vocab_path = './vocab/vocab-fixed'+str(idx)+'_r_w_b_'+str(size)+'m_'+str(size)+'rslot.pkl'
+        # self.vocab_path = './vocab/vocab-fixed'+str(idx)+'_r_w_b_'+str(self.size)+'m_'+str(self.size)+'rslot.pkl'
+        self.vocab_path = './vocab/vocab-fixed'+str(idx)+'_r_w_b_'+str(self.size)+'m.pkl'
 
-        self.model_path = './models/fixed'+str(idx)+'_rwb'+str(size)+'_mstep'+str(self.maml_step)+'.pkl'
-        self.result_path = './results/fixed'+str(idx)+'_rwb'+str(size)+'_mstep'+str(self.maml_step)+'.csv'
+        self.model_path = './models/fixed'+str(idx)+'_rwb'+str(self.size)+'_mstep'+str(self.maml_step)+'.pkl'
+        self.result_path = './results/fixed'+str(idx)+'_rwb'+str(self.size)+'_mstep'+str(self.maml_step)+'.csv'
 
         self.teacher_force = 100
         self.beam_search = False
@@ -155,6 +156,8 @@ class _Config:
         current_time = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
 
         stderr_handler = logging.StreamHandler()
+        if not os.path.exists('./log/'):
+            os.mkdir('./log/')
         file_handler = logging.FileHandler('./log/log_{}.txt'.format(current_time))
         logging.basicConfig(handlers=[stderr_handler, file_handler])
         logger = logging.getLogger()
