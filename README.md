@@ -22,7 +22,7 @@ python multiple_domains.py
 ## Training with default parameters
 
 ```
-python model.py -mode train_maml -model tsdf-camrest
+python model.py
 ```
 
 (optional: configuring hyperparameters with cmdline)
@@ -35,6 +35,11 @@ python model.py -mode train_maml -model tsdf-camrest -cfg lr=0.003 batch_size=32
 
 ```
 python model.py -mode test_maml -model tsdf-camrest
+```
+
+or test on new domains (e.g. movie domain):
+```
+bash run_movie.sh
 ```
 
 
