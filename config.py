@@ -91,8 +91,8 @@ class _Config:
         # self.vocab_path = './vocab/vocab-fixed'+str(idx)+'_r_w_b_'+str(self.size)+'m_'+str(self.size)+'rslot.pkl'
         self.vocab_path = './vocab/vocab-fixed'+str(idx)+'_r_w_b_'+str(self.size)+'m.pkl'
 
-        self.model_path = './models/fixed'+str(idx)+'_rwb'+str(self.size)+'_mstep'+str(self.maml_step)+'.pkl'
-        self.result_path = './results/fixed'+str(idx)+'_rwb'+str(self.size)+'_mstep'+str(self.maml_step)+'.csv'
+        self.model_path = './models/fixed'+str(idx)+'_rwb_' +str(self.maml_step)+ 'mstep.pkl'
+        self.result_path = './results/fixed'+str(idx)+'_rwb_' +str(self.maml_step)+ 'mstep.csv'
 
         self.teacher_force = 100
         self.beam_search = False
