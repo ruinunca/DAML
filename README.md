@@ -16,8 +16,10 @@ Please download the code here: https://github.com/qbetterk/SimDial
 ```
 git clone https://github.com/qbetterk/SimDial.git
 cd SimDial
-python multiple_domains.py
+bash run.sh
 ```
+This generate train/dev/test data (1500 dialogs in each domain) and adaptation data (9 dialogs in each domain).
+The size of data can be modified by argument "size" of script run.sh
 
 ## Training with default parameters
 
