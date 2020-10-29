@@ -623,8 +623,8 @@ class Model:
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('-mode')
-    parser.add_argument('-model')
+    parser.add_argument('-mode', default='train_maml')
+    parser.add_argument('-model', default='tsdf-camrest')
     parser.add_argument('-cfg', nargs='*')
     args = parser.parse_args()
 

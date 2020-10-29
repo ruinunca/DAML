@@ -16,13 +16,15 @@ Please download the code here: https://github.com/qbetterk/SimDial
 ```
 git clone https://github.com/qbetterk/SimDial.git
 cd SimDial
-python multiple_domains.py
+bash run.sh
 ```
+This generate train/dev/test data (1500 dialogs in each domain) and adaptation data (9 dialogs in each domain).
+The size of data can be modified by argument "size" of script run.sh
 
 ## Training with default parameters
 
 ```
-python model.py -mode train_maml -model tsdf-camrest
+python model.py
 ```
 
 (optional: configuring hyperparameters with cmdline)
@@ -35,6 +37,11 @@ python model.py -mode train_maml -model tsdf-camrest -cfg lr=0.003 batch_size=32
 
 ```
 python model.py -mode test_maml -model tsdf-camrest
+```
+
+or test on new domains (e.g. movie domain):
+```
+bash run_movie.sh
 ```
 
 
