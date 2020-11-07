@@ -1000,7 +1000,7 @@ def get_glove_matrix(vocab, initial_embedding_np):
     :param initial_embedding_np:
     :return: np array of [V,E]
     """
-    ef = open(cfg.glove_path, 'r')
+    ef = open(cfg.glove_path, 'r', encoding="utf-8")
     cnt = 0
     vec_array = initial_embedding_np
     old_avg = np.average(vec_array)
